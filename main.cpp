@@ -21,10 +21,16 @@ struct Outer {
 };
 
 template <typename T>
-struct Simple {};
+struct Simple {
+    // allows to use the struct to select the formatter directly
+    // fmt::format("{}", Simple<Outer>{Outer{1,2,Inner{3,4}});
+    const T& value;
+};
 
 template <typename T>
-struct Extended {};
+struct Extended {
+    const T& value;
+};
 
 /**
  * Structure that holds reflection information about type T.
@@ -105,14 +111,42 @@ struct fmt::formatter<Simple<T>, C, std::enable_if_t<reflection<T>::available, v
         delimiter = "";
         auto out = std::back_inserter(delimiter);
         std::copy_if(it, end, out, [](char c) { return c != '}'; });
-        std::advance(it,delimiter.size());
+        std::advance(it, delimiter.size());
         return it;
     }
 
-    template <typename FormatContext>
-    auto format(T const& t, FormatContext& ctx) {
-        using base = formatter<decltype(fmt::join(reflection<T>::values(t), delimiter))>;
-        return base{}.format(fmt::join(reflection<T>::values(t), delimiter), ctx);
+    template <typename FormatContext, typename A>
+    auto format(A const& a, FormatContext& ctx) {
+        return format_internal(reflection<A>::values(a), ctx);
+    }
+
+    template <typename FormatContext, typename... Args>
+    typename FormatContext::iterator format_internal(const std::tuple<Args...>& value, FormatContext& ctx) {
+        return format_internal(value, ctx, std::make_index_sequence<sizeof...(Args)>{});
+    }
+
+   private:
+    template <typename FormatContext, typename... Args, size_t... N>
+    typename FormatContext::iterator format_internal(const std::tuple<Args...>& value, FormatContext& ctx,
+                                                     internal::index_sequence<N...>) {
+        return format_args(ctx, std::get<N>(value)...);
+    }
+
+    template <typename FormatContext, typename Arg, typename... Args>
+    typename FormatContext::iterator format_args(FormatContext& ctx, const Arg& arg, const Args&... args) {
+        auto out = ctx.out();
+        if constexpr (reflection<Arg>::available) {
+            out = format(arg, ctx);
+        } else {
+            using base = formatter<typename std::decay<Arg>::type, C>;
+            out = base{}.format(arg, ctx);
+        }
+        if constexpr (sizeof...(Args) > 0) {
+            out = std::copy(delimiter.begin(), delimiter.end(), out);
+            ctx.advance_to(out);
+            return format_args(ctx, args...);
+        }
+        return out;
     }
 
     std::string delimiter = "|";
@@ -130,8 +164,8 @@ template <typename T, typename C>
 struct fmt::formatter<Extended<T>, C, std::enable_if_t<reflection<T>::available, void>> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
-        auto it =ctx.begin();
-        if (*it!='}') throw format_error("configuration not yet supported");
+        auto it = ctx.begin();
+        if (*it != '}') throw format_error("configuration not yet supported");
         return it;
     }
 
@@ -202,7 +236,10 @@ int main() {
         std::cout << "Manual extended: " << extended.str() << std::endl;
         std::cout << "libfmt extended: " << fmt::format("{:e}", outer) << std::endl;
         std::cout << "Manual simple: " << simple.str() << std::endl;
-        std::cout << "libfmt simple: " << fmt::format("{:s{;}}", outer) << std::endl;
+        std::cout << "libfmt simple: " << fmt::format("{:s}", outer) << std::endl;
+
+        std::cout << "Manual simple: " << simple.str() << std::endl;
+        std::cout << "libfmt simple: " << fmt::format("{:s;}", outer) << std::endl;
 
         bool extended_fail = fmt::format("{:e}", outer) != extended.str();
         bool simple_fail = fmt::format("{:s}", outer) != simple.str();
