@@ -85,18 +85,32 @@ struct fmt::formatter<NamedField<T>> {
     }
 };
 
+/**
+ * Formats objects as concatenated list of their values.
+ *
+ * E.g. fmt::format("{:s}", Outer{1,2,Inner{3,4,5}}) will output 1|2|3|4|5
+ *
+ *
+ * @tparam T The object to format.
+ * @tparam C The character type used.
+ */
 template <typename T, typename C>
 struct fmt::formatter<Simple<T>, C, std::enable_if_t<reflection<T>::available, void>> {
-    //    explicit formatter( std::string sep) : _sep(sep) {}
     template <typename FormatContext>
     auto format(T const& t, FormatContext& ctx) {
         using base = formatter<decltype(fmt::join(reflection<T>::values(t), "|"))>;
         return base{}.format(fmt::join(reflection<T>::values(t), "|"), ctx);
     }
-
-    //    std::string _sep = "|";
 };
 
+/**
+ * Formats objects as they would be written using designated initializers.
+ *
+ * E.g. {:e} will output Outer{.a=1, b=2, .inner=Inner{.x=3, .y=4, .z=5}}
+ *
+ * @tparam T The object to format.
+ * @tparam C The character type used.
+ */
 template <typename T, typename C>
 struct fmt::formatter<Extended<T>, C, std::enable_if_t<reflection<T>::available, void>> {
     template <typename FormatContext>
@@ -161,7 +175,7 @@ int main() {
         std::cout << "Manual extended: " << extended.str() << std::endl;
         std::cout << "libfmt extended: " << fmt::format("{:e}", outer) << std::endl;
         std::cout << "Manual simple: " << simple.str() << std::endl;
-        std::cout << "libfmt simple: " << fmt::format("{:s}", outer) << std::endl;
+        std::cout << "libfmt simple: " << fmt::format("{:s{;}}", outer) << std::endl;
 
         bool extended_fail = fmt::format("{:e}", outer) != extended.str();
         bool simple_fail = fmt::format("{:s}", outer) != simple.str();
