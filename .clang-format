@@ -1,0 +1,11 @@
+---
+BasedOnStyle: Google # select default style sheet.
+IndentWidth: 4 # use 4 spaces indentation.
+ColumnLimit: 120
+
+IncludeBlocks: Preserve
+BreakConstructorInitializers: BeforeColon
+AllowAllConstructorInitializersOnNextLine: false
+BreakConstructorInitializersBeforeComma: true
+#BreakConstructorInitializers: BeforeColon
+---
