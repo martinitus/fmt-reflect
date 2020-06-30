@@ -90,17 +90,32 @@ struct fmt::formatter<NamedField<T>> {
  *
  * E.g. fmt::format("{:s}", Outer{1,2,Inner{3,4,5}}) will output 1|2|3|4|5
  *
+ * The formatting string may contain a nested string that will be used as delimiter (defaults to "|")
+ *
+ * E.g. fmt::format("{:s;}", Outer{1,2,Inner{3,4,5}}) will output 1;2;3;4;5
  *
  * @tparam T The object to format.
  * @tparam C The character type used.
  */
 template <typename T, typename C>
 struct fmt::formatter<Simple<T>, C, std::enable_if_t<reflection<T>::available, void>> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        auto it = ctx.begin(), end = ctx.end();
+        delimiter = "";
+        auto out = std::back_inserter(delimiter);
+        std::copy_if(it, end, out, [](char c) { return c != '}'; });
+        std::advance(it,delimiter.size());
+        return it;
+    }
+
     template <typename FormatContext>
     auto format(T const& t, FormatContext& ctx) {
-        using base = formatter<decltype(fmt::join(reflection<T>::values(t), "|"))>;
-        return base{}.format(fmt::join(reflection<T>::values(t), "|"), ctx);
+        using base = formatter<decltype(fmt::join(reflection<T>::values(t), delimiter))>;
+        return base{}.format(fmt::join(reflection<T>::values(t), delimiter), ctx);
     }
+
+    std::string delimiter = "|";
 };
 
 /**
@@ -113,6 +128,13 @@ struct fmt::formatter<Simple<T>, C, std::enable_if_t<reflection<T>::available, v
  */
 template <typename T, typename C>
 struct fmt::formatter<Extended<T>, C, std::enable_if_t<reflection<T>::available, void>> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        auto it =ctx.begin();
+        if (*it!='}') throw format_error("configuration not yet supported");
+        return it;
+    }
+
     template <typename FormatContext>
     auto format(T const& t, FormatContext& ctx) {
         std::string name = reflection<T>::name();
@@ -146,8 +168,13 @@ struct fmt::formatter<T, Char, std::enable_if_t<reflection<T>::available, void>>
             throw format_error("invalid format");
         }
 
+        ctx.advance_to(it);
+        it = std::visit([&ctx](auto& f) { return f.parse(ctx); }, underlying_formatter);
+
         // Check if reached the end of the range:
-        if (it != end && *it != '}') throw format_error("invalid format");
+        if (it != end && *it != '}') {
+            throw format_error("invalid format");
+        }
 
         // Return an iterator past the end of the parsed range:
         return it;
